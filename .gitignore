@@ -109,3 +109,5 @@ temp/
 *.zip
 *.tar
 *.tar.gz
+
+actions-runner/
