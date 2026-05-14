@@ -25,7 +25,8 @@ jobs:
 
       - name: Normalize owner
         run: |
-          echo "OWNER_LC=${OWNER,,}" >> $GITHUB_ENV
+          OWNER_LC=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          echo "OWNER_LC=$OWNER_LC" >> "$GITHUB_ENV"
 
       - name: Check Docker and Kubernetes
         run: |
