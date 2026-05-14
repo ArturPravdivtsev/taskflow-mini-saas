@@ -12,10 +12,12 @@ spec:
       labels:
         app: web
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       containers:
         - name: web
-          image: taskflow-web:dev
-          imagePullPolicy: Never
+          image: ghcr.io/ArturPravdivtsev/taskflow-web:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
 

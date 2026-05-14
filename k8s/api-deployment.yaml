@@ -17,10 +17,12 @@ spec:
       labels:
         app: api
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       containers:
         - name: api
-          image: taskflow-api:dev
-          imagePullPolicy: Never
+          image: ghcr.io/ArturPravdivtsev/taskflow-api:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
 

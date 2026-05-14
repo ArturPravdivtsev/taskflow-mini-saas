@@ -9,11 +9,13 @@ spec:
       labels:
         app: taskflow-migrations
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       restartPolicy: OnFailure
       containers:
         - name: migrations
-          image: taskflow-migrations:dev
-          imagePullPolicy: Never
+          image: ghcr.io/ArturPravdivtsev/taskflow-migrations:latest
+          imagePullPolicy: IfNotPresent
           env:
             - name: DATABASE_URL
               valueFrom:
