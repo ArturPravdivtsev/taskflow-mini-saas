@@ -1,0 +1,109 @@
+name: Local CD with GHCR
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: ${{ github.repository_owner }}
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  deploy:
+    name: Build, push and deploy to local Kubernetes
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Normalize owner
+        run: |
+          echo "OWNER_LC=${OWNER,,}" >> $GITHUB_ENV
+
+      - name: Check Docker and Kubernetes
+        run: |
+          docker version
+          kubectl config current-context
+          kubectl get nodes
+
+      - name: Install API dependencies
+        run: npm ci
+        working-directory: api
+
+      - name: Install Web dependencies
+        run: npm ci
+        working-directory: taskflow-web
+
+      - name: Build Web
+        run: npm run build
+        working-directory: taskflow-web
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build Docker images
+        run: |
+          docker build -t ghcr.io/$OWNER_LC/taskflow-api:$IMAGE_TAG ./api
+          docker build -t ghcr.io/$OWNER_LC/taskflow-web:$IMAGE_TAG ./taskflow-web
+          docker build -t ghcr.io/$OWNER_LC/taskflow-migrations:$IMAGE_TAG ./db
+
+      - name: Push Docker images
+        run: |
+          docker push ghcr.io/$OWNER_LC/taskflow-api:$IMAGE_TAG
+          docker push ghcr.io/$OWNER_LC/taskflow-web:$IMAGE_TAG
+          docker push ghcr.io/$OWNER_LC/taskflow-migrations:$IMAGE_TAG
+
+      - name: Apply base Kubernetes manifests
+        run: |
+          kubectl apply -f k8s/api-configmap.yaml
+          kubectl apply -f k8s/api-secret.yaml
+
+          kubectl apply -f k8s/postgres-secret.yaml
+          kubectl apply -f k8s/postgres-service.yaml
+          kubectl apply -f k8s/postgres-statefulset.yaml
+
+          kubectl apply -f k8s/api-service.yaml
+          kubectl apply -f k8s/web-service.yaml
+
+          kubectl apply -f k8s/api-deployment.yaml
+          kubectl apply -f k8s/web-deployment.yaml
+
+          kubectl apply -f k8s/ingress.yaml
+          kubectl apply -f k8s/api-hpa.yaml
+          kubectl apply -f k8s/api-servicemonitor.yaml
+          kubectl apply -f k8s/api-prometheusrule.yaml
+
+      - name: Wait for PostgreSQL
+        run: kubectl rollout status statefulset/postgres --timeout=180s
+
+      - name: Update migration image
+        run: |
+          kubectl delete job taskflow-migrations --ignore-not-found
+          sed "s|ghcr.io/<GITHUB_OWNER>/taskflow-migrations:latest|ghcr.io/$OWNER_LC/taskflow-migrations:$IMAGE_TAG|g" k8s/migrations-job.yaml | kubectl apply -f -
+
+      - name: Run database migrations
+        run: |
+          kubectl wait --for=condition=complete job/taskflow-migrations --timeout=180s
+          kubectl logs job/taskflow-migrations
+
+      - name: Update deployment images
+        run: |
+          kubectl set image deployment/api api=ghcr.io/$OWNER_LC/taskflow-api:$IMAGE_TAG
+          kubectl set image deployment/web web=ghcr.io/$OWNER_LC/taskflow-web:$IMAGE_TAG
+
+      - name: Wait for deployments
+        run: |
+          kubectl rollout status deployment api --timeout=180s
+          kubectl rollout status deployment web --timeout=180s
+
+      - name: Smoke test
+        run: |
+          curl -f http://localhost/api/health
+          curl -f http://localhost/api/tasks
