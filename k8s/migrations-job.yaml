@@ -14,7 +14,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: migrations
-          image: ghcr.io/arturpravdivtsev/taskflow-migrations:latest
+          image: ghcr.io/<GITHUB_OWNER>/taskflow-migrations:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: DATABASE_URL
