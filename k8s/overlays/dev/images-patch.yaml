@@ -7,7 +7,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: ghcr.io/arturpravdivtsev/taskflow-api:97b2a2e4ad9003342c158c829f9566fea1ccde34
+          image: ghcr.io/arturpravdivtsev/taskflow-api:f6541817cecd946a05f17dfb7b642c3cdefea167
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -18,4 +18,4 @@ spec:
     spec:
       containers:
         - name: web
-          image: ghcr.io/arturpravdivtsev/taskflow-web:97b2a2e4ad9003342c158c829f9566fea1ccde34
+          image: ghcr.io/arturpravdivtsev/taskflow-web:f6541817cecd946a05f17dfb7b642c3cdefea167
