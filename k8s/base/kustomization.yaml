@@ -8,6 +8,7 @@ resources:
   - api-hpa.yaml
   - api-servicemonitor.yaml
   - api-prometheusrule.yaml
+  - api-pdb.yaml
   - web-deployment.yaml
   - web-service.yaml
   - ingress.yaml
