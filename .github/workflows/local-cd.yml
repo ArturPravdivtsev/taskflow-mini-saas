@@ -36,6 +36,33 @@ jobs:
           OWNER_LC=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
           echo "OWNER_LC=$OWNER_LC" >> "$GITHUB_ENV"
 
+      - name: Setup restricted kubeconfig
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
+        run: |
+          set -e
+
+          if [ -z "$KUBE_CONFIG_B64" ]; then
+            echo "KUBE_CONFIG_B64 is empty"
+            exit 1
+          fi
+
+          mkdir -p "$HOME/.kube"
+
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          kubeconfig = base64.b64decode(os.environ["KUBE_CONFIG_B64"])
+          path = Path.home() / ".kube" / "taskflow-cd.kubeconfig"
+          path.write_bytes(kubeconfig)
+          print(path)
+          PY
+
+          chmod 600 "$HOME/.kube/taskflow-cd.kubeconfig"
+          echo "KUBECONFIG=$HOME/.kube/taskflow-cd.kubeconfig" >> "$GITHUB_ENV"
+
       - name: Print image names
         run: |
           echo "API image: ghcr.io/$OWNER_LC/taskflow-api:latest"
@@ -132,8 +159,6 @@ jobs:
             exit 1
           fi
 
-          kubectl create namespace "$KUBE_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
-
           kubectl create secret generic api-secret \
             --namespace "$KUBE_NAMESPACE" \
             --from-literal=API_TOKEN="$TASKFLOW_API_TOKEN" \
@@ -157,6 +182,13 @@ jobs:
             --docker-email="deadpoollyo@gmail.com" \
             --dry-run=client \
             -o yaml | kubectl apply -f -
+
+      - name: Check restricted Kubernetes access
+        run: |
+          kubectl config current-context
+          kubectl get pods -n "$KUBE_NAMESPACE"
+          kubectl auth can-i get pods -n "$KUBE_NAMESPACE"
+          kubectl auth can-i get pods -n kube-system || true
 
       - name: Apply Kubernetes manifests
         run: |
