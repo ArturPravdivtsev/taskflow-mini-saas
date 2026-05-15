@@ -224,51 +224,42 @@ jobs:
         run: |
           set -e
 
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
+          {
+            printf '%s\n' 'apiVersion: apps/v1'
+            printf '%s\n' 'kind: Deployment'
+            printf '%s\n' 'metadata:'
+            printf '%s\n' '  name: api'
+            printf '%s\n' 'spec:'
+            printf '%s\n' '  template:'
+            printf '%s\n' '    spec:'
+            printf '%s\n' '      containers:'
+            printf '%s\n' '        - name: api'
+            printf '%s\n' "          image: ghcr.io/$OWNER_LC/taskflow-api:$IMAGE_TAG"
+            printf '%s\n' '---'
+            printf '%s\n' 'apiVersion: apps/v1'
+            printf '%s\n' 'kind: Deployment'
+            printf '%s\n' 'metadata:'
+            printf '%s\n' '  name: web'
+            printf '%s\n' 'spec:'
+            printf '%s\n' '  template:'
+            printf '%s\n' '    spec:'
+            printf '%s\n' '      containers:'
+            printf '%s\n' '        - name: web'
+            printf '%s\n' "          image: ghcr.io/$OWNER_LC/taskflow-web:$IMAGE_TAG"
+          } > k8s/overlays/prod/images-patch.yaml
 
-          owner = os.environ["OWNER_LC"]
-          tag = os.environ["IMAGE_TAG"]
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          content = f"""apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: api
-          spec:
-            template:
-              spec:
-                containers:
-                  - name: api
-                    image: ghcr.io/{owner}/taskflow-api:{tag}
-          ---
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: web
-          spec:
-            template:
-              spec:
-                containers:
-                  - name: web
-                    image: ghcr.io/{owner}/taskflow-web:{tag}
-          """
+          git add k8s/overlays/prod/images-patch.yaml
 
-              Path("k8s/overlays/prod/images-patch.yaml").write_text(content)
-              PY
-
-              git config user.name "github-actions[bot]"
-              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-              git add k8s/overlays/prod/images-patch.yaml
-
-              if git diff --cached --quiet; then
-                echo "No image tag changes to commit"
-              else
-                git commit -m "chore(prod): promote image $IMAGE_TAG [skip ci]"
-                git pull --rebase origin main
-                git push origin main
-              fi
+          if git diff --cached --quiet; then
+            echo "No image tag changes to commit"
+          else
+            git commit -m "chore(prod): promote image $IMAGE_TAG [skip ci]"
+            git pull --rebase origin main
+            git push origin main
+          fi
 
       - name: Wait for Argo CD prod rollout
         run: |
