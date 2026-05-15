@@ -14,3 +14,6 @@ resources:
   - ingress.yaml
   - postgres-service.yaml
   - postgres-statefulset.yaml
+  - postgres-exporter-deployment.yaml
+  - postgres-exporter-service.yaml
+  - postgres-exporter-servicemonitor.yaml

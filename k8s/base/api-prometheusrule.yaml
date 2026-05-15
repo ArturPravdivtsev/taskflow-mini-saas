@@ -8,18 +8,27 @@ spec:
   groups:
     - name: taskflow-api.rules
       rules:
-        - alert: TaskFlowAPIHighErrorRate
-          expr: sum(rate(taskflow_http_requests_total{status=~"5.."}[5m])) > 0
-          for: 1m
+        - alert: TaskFlowAPIHigh5xxRate
+          expr: |
+            (
+              sum(rate(taskflow_http_requests_total{status=~"5.."}[5m]))
+              /
+              sum(rate(taskflow_http_requests_total[5m]))
+            ) > 0.05
+          for: 2m
           labels:
             severity: warning
             app: taskflow
           annotations:
-            summary: "TaskFlow API returns 5xx errors"
-            description: "TaskFlow API has returned 5xx responses for more than 1 minute."
+            summary: "TaskFlow API has high 5xx error rate"
+            description: "More than 5% of TaskFlow API requests are returning 5xx for 2 minutes."
 
         - alert: TaskFlowAPIHighLatency
-          expr: histogram_quantile(0.95, sum(rate(taskflow_http_request_duration_seconds_bucket[5m])) by (le)) > 0.05
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum(rate(taskflow_http_request_duration_seconds_bucket[5m])) by (le)
+            ) > 0.5
           for: 2m
           labels:
             severity: warning
@@ -29,7 +38,7 @@ spec:
             description: "TaskFlow API p95 latency is above 500ms for more than 2 minutes."
 
         - alert: TaskFlowAPITargetDown
-          expr: up{namespace="default", service="api-service"} == 0
+          expr: up{namespace=~"taskflow-dev|taskflow-prod", service="api-service"} == 0
           for: 1m
           labels:
             severity: critical
@@ -39,7 +48,11 @@ spec:
             description: "Prometheus cannot scrape TaskFlow API metrics."
 
         - alert: TaskFlowAPIRestarts
-          expr: increase(kube_pod_container_status_restarts_total{namespace="default", container="api"}[10m]) > 0
+          expr: |
+            increase(kube_pod_container_status_restarts_total{
+              namespace=~"taskflow-dev|taskflow-prod",
+              container="api"
+            }[10m]) > 0
           for: 1m
           labels:
             severity: warning
@@ -47,3 +60,74 @@ spec:
           annotations:
             summary: "TaskFlow API container restarted"
             description: "TaskFlow API container restarted during the last 10 minutes."
+
+        - alert: TaskFlowPodWaiting
+          expr: |
+            max by (namespace, pod, container, reason) (
+              kube_pod_container_status_waiting_reason{
+                namespace=~"taskflow-dev|taskflow-prod",
+                reason=~"ImagePullBackOff|ErrImagePull|CrashLoopBackOff"
+              }
+            ) == 1
+          for: 2m
+          labels:
+            severity: critical
+            app: taskflow
+          annotations:
+            summary: "TaskFlow pod is stuck in waiting state"
+            description: "Pod {{ $labels.pod }} container {{ $labels.container }} in namespace {{ $labels.namespace }} is waiting because of {{ $labels.reason }}."
+
+        - alert: TaskFlowAPINoAvailableReplicas
+          expr: |
+            kube_deployment_status_replicas_available{
+              namespace=~"taskflow-dev|taskflow-prod",
+              deployment="api"
+            } < 1
+          for: 1m
+          labels:
+            severity: critical
+            app: taskflow
+          annotations:
+            summary: "TaskFlow API has no available replicas"
+            description: "API deployment in namespace {{ $labels.namespace }} has no available replicas."
+
+        - alert: TaskFlowHPAMaxReplicasReached
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{
+              namespace=~"taskflow-dev|taskflow-prod",
+              horizontalpodautoscaler="api-hpa"
+            }
+            >=
+            kube_horizontalpodautoscaler_spec_max_replicas{
+              namespace=~"taskflow-dev|taskflow-prod",
+              horizontalpodautoscaler="api-hpa"
+            }
+          for: 5m
+          labels:
+            severity: warning
+            app: taskflow
+          annotations:
+            summary: "TaskFlow HPA reached max replicas"
+            description: "HPA api-hpa in namespace {{ $labels.namespace }} has been at max replicas for more than 5 minutes."
+
+    - name: taskflow-postgres.rules
+      rules:
+        - alert: TaskFlowPostgresExporterDown
+          expr: up{namespace=~"taskflow-dev|taskflow-prod", service="postgres-exporter"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            app: taskflow
+          annotations:
+            summary: "TaskFlow PostgreSQL exporter is down"
+            description: "Prometheus cannot scrape postgres-exporter in namespace {{ $labels.namespace }}."
+
+        - alert: TaskFlowPostgresDown
+          expr: pg_up{namespace=~"taskflow-dev|taskflow-prod"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            app: taskflow
+          annotations:
+            summary: "TaskFlow PostgreSQL is down"
+            description: "PostgreSQL appears to be down in namespace {{ $labels.namespace }}."
