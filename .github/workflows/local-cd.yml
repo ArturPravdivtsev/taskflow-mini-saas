@@ -97,8 +97,41 @@ jobs:
           POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
         run: |
+          set -e
+
+          if [ -z "$TASKFLOW_API_TOKEN" ]; then
+            echo "TASKFLOW_API_TOKEN is empty"
+            exit 1
+          fi
+
+          if [ -z "$POSTGRES_USER" ]; then
+            echo "POSTGRES_USER is empty"
+            exit 1
+          fi
+
+          if [ -z "$POSTGRES_PASSWORD" ]; then
+            echo "POSTGRES_PASSWORD is empty"
+            exit 1
+          fi
+
+          if [ -z "$POSTGRES_DB" ]; then
+            echo "POSTGRES_DB is empty"
+            exit 1
+          fi
+
+          if [ -z "$GHCR_USERNAME" ]; then
+            echo "GHCR_USERNAME is empty"
+            exit 1
+          fi
+
+          if [ -z "$GHCR_READ_TOKEN" ]; then
+            echo "GHCR_READ_TOKEN is empty"
+            exit 1
+          fi
+
           kubectl create namespace "$KUBE_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 
           kubectl create secret generic api-secret \
@@ -119,7 +152,7 @@ jobs:
           kubectl create secret docker-registry ghcr-secret \
             --namespace "$KUBE_NAMESPACE" \
             --docker-server=ghcr.io \
-            --docker-username="$OWNER_LC" \
+            --docker-username="$GHCR_USERNAME" \
             --docker-password="$GHCR_READ_TOKEN" \
             --docker-email="deadpoollyo@gmail.com" \
             --dry-run=client \
