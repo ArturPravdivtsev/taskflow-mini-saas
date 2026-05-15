@@ -114,7 +114,8 @@ jobs:
         run: |
           docker version
           kubectl config current-context
-          kubectl get nodes
+          kubectl get pods -n "$KUBE_NAMESPACE"
+          kubectl auth can-i get pods -n "$KUBE_NAMESPACE"
 
       - name: Login to GHCR for pull
         env:
