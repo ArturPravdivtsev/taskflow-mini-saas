@@ -33,6 +33,12 @@ jobs:
           OWNER_LC=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
           echo "OWNER_LC=$OWNER_LC" >> "$GITHUB_ENV"
 
+      - name: Print image names
+        run: |
+          echo "API image: ghcr.io/$OWNER_LC/taskflow-api:latest"
+          echo "WEB image: ghcr.io/$OWNER_LC/taskflow-web:latest"
+          echo "Migrations image: ghcr.io/$OWNER_LC/taskflow-migrations:latest"
+
       - name: Check Docker and Kubernetes
         run: |
           docker version
@@ -56,15 +62,31 @@ jobs:
 
       - name: Build Docker images
         run: |
-          docker build -t ghcr.io/$OWNER_LC/taskflow-api:$IMAGE_TAG ./api
-          docker build -t ghcr.io/$OWNER_LC/taskflow-web:$IMAGE_TAG ./taskflow-web
-          docker build -t ghcr.io/$OWNER_LC/taskflow-migrations:$IMAGE_TAG ./db
+          docker build \
+            -t ghcr.io/$OWNER_LC/taskflow-api:$IMAGE_TAG \
+            -t ghcr.io/$OWNER_LC/taskflow-api:latest \
+            ./api
+
+          docker build \
+            -t ghcr.io/$OWNER_LC/taskflow-web:$IMAGE_TAG \
+            -t ghcr.io/$OWNER_LC/taskflow-web:latest \
+            ./taskflow-web
+
+          docker build \
+            -t ghcr.io/$OWNER_LC/taskflow-migrations:$IMAGE_TAG \
+            -t ghcr.io/$OWNER_LC/taskflow-migrations:latest \
+            ./db
 
       - name: Push Docker images
         run: |
           docker push ghcr.io/$OWNER_LC/taskflow-api:$IMAGE_TAG
+          docker push ghcr.io/$OWNER_LC/taskflow-api:latest
+
           docker push ghcr.io/$OWNER_LC/taskflow-web:$IMAGE_TAG
+          docker push ghcr.io/$OWNER_LC/taskflow-web:latest
+
           docker push ghcr.io/$OWNER_LC/taskflow-migrations:$IMAGE_TAG
+          docker push ghcr.io/$OWNER_LC/taskflow-migrations:latest
 
       - name: Create Kubernetes secrets
         env:

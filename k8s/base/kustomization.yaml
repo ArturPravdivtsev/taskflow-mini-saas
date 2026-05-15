@@ -13,4 +13,3 @@ resources:
   - ingress.yaml
   - postgres-service.yaml
   - postgres-statefulset.yaml
-  - migrations-job.yaml
