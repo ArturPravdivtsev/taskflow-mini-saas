@@ -129,5 +129,5 @@ jobs:
 
       - name: Smoke test
         run: |
-          curl -f http://localhost/api/health
-          curl -f http://localhost/api/tasks
+          curl -f http://dev.taskflow.local/api/health
+          curl -f http://dev.taskflow.local/api/tasks
