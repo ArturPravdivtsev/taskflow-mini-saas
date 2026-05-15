@@ -44,6 +44,25 @@ jobs:
           kubectl config current-context
           kubectl get nodes
 
+      - name: Login to GHCR for pull
+        env:
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+        run: |
+          set -e
+
+          if [ -z "$GHCR_USERNAME" ]; then
+            echo "GHCR_USERNAME is empty"
+            exit 1
+          fi
+
+          if [ -z "$GHCR_READ_TOKEN" ]; then
+            echo "GHCR_READ_TOKEN is empty"
+            exit 1
+          fi
+
+          echo "$GHCR_READ_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+
       - name: Check selected images exist
         run: |
           docker pull ghcr.io/$OWNER_LC/taskflow-api:$IMAGE_TAG
