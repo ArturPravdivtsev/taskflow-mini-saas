@@ -1,0 +1,181 @@
+name: Production CD
+
+"on":
+  workflow_dispatch:
+
+concurrency:
+  group: taskflow-prod-cd
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: ${{ github.repository_owner }}
+  IMAGE_TAG: ${{ github.sha }}
+  KUBE_NAMESPACE: taskflow-prod
+  APP_HOST: prod.taskflow.local
+
+jobs:
+  deploy:
+    name: Build, push and deploy to production
+    runs-on: self-hosted
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Normalize owner
+        run: |
+          OWNER_LC=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          echo "OWNER_LC=$OWNER_LC" >> "$GITHUB_ENV"
+
+      - name: Check Docker and Kubernetes
+        run: |
+          docker version
+          kubectl config current-context
+          kubectl get nodes
+
+      - name: Install API dependencies
+        run: npm ci
+        working-directory: api
+
+      - name: Install Web dependencies
+        run: npm ci
+        working-directory: taskflow-web
+
+      - name: Build Web
+        run: npm run build
+        working-directory: taskflow-web
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build Docker images
+        run: |
+          docker build \
+            -t ghcr.io/$OWNER_LC/taskflow-api:$IMAGE_TAG \
+            -t ghcr.io/$OWNER_LC/taskflow-api:latest \
+            ./api
+
+          docker build \
+            -t ghcr.io/$OWNER_LC/taskflow-web:$IMAGE_TAG \
+            -t ghcr.io/$OWNER_LC/taskflow-web:latest \
+            ./taskflow-web
+
+          docker build \
+            -t ghcr.io/$OWNER_LC/taskflow-migrations:$IMAGE_TAG \
+            -t ghcr.io/$OWNER_LC/taskflow-migrations:latest \
+            ./db
+
+      - name: Push Docker images
+        run: |
+          docker push ghcr.io/$OWNER_LC/taskflow-api:$IMAGE_TAG
+          docker push ghcr.io/$OWNER_LC/taskflow-api:latest
+
+          docker push ghcr.io/$OWNER_LC/taskflow-web:$IMAGE_TAG
+          docker push ghcr.io/$OWNER_LC/taskflow-web:latest
+
+          docker push ghcr.io/$OWNER_LC/taskflow-migrations:$IMAGE_TAG
+          docker push ghcr.io/$OWNER_LC/taskflow-migrations:latest
+
+      - name: Create Kubernetes secrets
+        env:
+          TASKFLOW_API_TOKEN: ${{ secrets.TASKFLOW_API_TOKEN }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+        run: |
+          set -e
+
+          if [ -z "$TASKFLOW_API_TOKEN" ]; then echo "TASKFLOW_API_TOKEN is empty"; exit 1; fi
+          if [ -z "$POSTGRES_USER" ]; then echo "POSTGRES_USER is empty"; exit 1; fi
+          if [ -z "$POSTGRES_PASSWORD" ]; then echo "POSTGRES_PASSWORD is empty"; exit 1; fi
+          if [ -z "$POSTGRES_DB" ]; then echo "POSTGRES_DB is empty"; exit 1; fi
+          if [ -z "$GHCR_USERNAME" ]; then echo "GHCR_USERNAME is empty"; exit 1; fi
+          if [ -z "$GHCR_READ_TOKEN" ]; then echo "GHCR_READ_TOKEN is empty"; exit 1; fi
+
+          kubectl create namespace "$KUBE_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl create secret generic api-secret \
+            --namespace "$KUBE_NAMESPACE" \
+            --from-literal=API_TOKEN="$TASKFLOW_API_TOKEN" \
+            --dry-run=client \
+            -o yaml | kubectl apply -f -
+
+          kubectl create secret generic postgres-secret \
+            --namespace "$KUBE_NAMESPACE" \
+            --from-literal=POSTGRES_USER="$POSTGRES_USER" \
+            --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+            --from-literal=POSTGRES_DB="$POSTGRES_DB" \
+            --from-literal=DATABASE_URL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@postgres-service:5432/$POSTGRES_DB" \
+            --dry-run=client \
+            -o yaml | kubectl apply -f -
+
+          kubectl create secret docker-registry ghcr-secret \
+            --namespace "$KUBE_NAMESPACE" \
+            --docker-server=ghcr.io \
+            --docker-username="$GHCR_USERNAME" \
+            --docker-password="$GHCR_READ_TOKEN" \
+            --docker-email="deadpoollyo@gmail.com" \
+            --dry-run=client \
+            -o yaml | kubectl apply -f -
+
+      - name: Apply Kubernetes manifests
+        run: |
+          kubectl apply -k k8s/overlays/prod
+
+      - name: Wait for PostgreSQL
+        run: kubectl rollout status statefulset/postgres -n "$KUBE_NAMESPACE" --timeout=180s
+
+      - name: Run database migrations
+        run: |
+          MIGRATION_JOB_NAME="taskflow-migrations-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          echo "Running migration job: $MIGRATION_JOB_NAME"
+
+          sed \
+            -e "s|name: taskflow-migrations|name: $MIGRATION_JOB_NAME|g" \
+            -e "s|app: taskflow-migrations|app: $MIGRATION_JOB_NAME|g" \
+            -e "s|ghcr.io/<GITHUB_OWNER>/taskflow-migrations:latest|ghcr.io/$OWNER_LC/taskflow-migrations:$IMAGE_TAG|g" \
+            k8s/base/migrations-job.yaml \
+            | kubectl apply -n "$KUBE_NAMESPACE" -f -
+
+          kubectl wait -n "$KUBE_NAMESPACE" \
+            --for=condition=complete job/$MIGRATION_JOB_NAME \
+            --timeout=180s || (
+              echo "Migration job did not complete. Debug info:"
+              kubectl get jobs -n "$KUBE_NAMESPACE"
+              kubectl describe job "$MIGRATION_JOB_NAME" -n "$KUBE_NAMESPACE"
+              kubectl get pods -n "$KUBE_NAMESPACE" -l app="$MIGRATION_JOB_NAME" -o wide
+              kubectl describe pod -n "$KUBE_NAMESPACE" -l app="$MIGRATION_JOB_NAME"
+              kubectl logs -n "$KUBE_NAMESPACE" job/$MIGRATION_JOB_NAME --all-containers || true
+              exit 1
+            )
+
+          kubectl logs -n "$KUBE_NAMESPACE" job/$MIGRATION_JOB_NAME
+
+      - name: Update deployment images
+        run: |
+          kubectl set image deployment/api api=ghcr.io/$OWNER_LC/taskflow-api:$IMAGE_TAG -n "$KUBE_NAMESPACE"
+          kubectl set image deployment/web web=ghcr.io/$OWNER_LC/taskflow-web:$IMAGE_TAG -n "$KUBE_NAMESPACE"
+
+      - name: Wait for deployments
+        run: |
+          kubectl rollout status deployment api -n "$KUBE_NAMESPACE" --timeout=180s
+          kubectl rollout status deployment web -n "$KUBE_NAMESPACE" --timeout=180s
+
+      - name: Smoke test
+        run: |
+          curl -f http://$APP_HOST/api/health
+          curl -f http://$APP_HOST/api/tasks
