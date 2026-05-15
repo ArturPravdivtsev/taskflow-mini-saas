@@ -14,6 +14,8 @@ env:
   REGISTRY: ghcr.io
   OWNER: ${{ github.repository_owner }}
   IMAGE_TAG: ${{ github.sha }}
+  KUBE_NAMESPACE: taskflow-dev
+  APP_HOST: dev.taskflow.local
 
 jobs:
   deploy:
@@ -95,13 +97,18 @@ jobs:
           POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
         run: |
+          kubectl create namespace "$KUBE_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+
           kubectl create secret generic api-secret \
+            --namespace "$KUBE_NAMESPACE" \
             --from-literal=API_TOKEN="$TASKFLOW_API_TOKEN" \
             --dry-run=client \
             -o yaml | kubectl apply -f -
 
           kubectl create secret generic postgres-secret \
+            --namespace "$KUBE_NAMESPACE" \
             --from-literal=POSTGRES_USER="$POSTGRES_USER" \
             --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
             --from-literal=POSTGRES_DB="$POSTGRES_DB" \
@@ -109,48 +116,58 @@ jobs:
             --dry-run=client \
             -o yaml | kubectl apply -f -
 
-      - name: Apply base Kubernetes manifests
+          kubectl create secret docker-registry ghcr-secret \
+            --namespace "$KUBE_NAMESPACE" \
+            --docker-server=ghcr.io \
+            --docker-username="$OWNER_LC" \
+            --docker-password="$GHCR_READ_TOKEN" \
+            --docker-email="deadpoollyo@gmail.com" \
+            --dry-run=client \
+            -o yaml | kubectl apply -f -
+
+      - name: Apply Kubernetes manifests
         run: |
-          kubectl apply -f k8s/api-configmap.yaml
-
-          kubectl apply -f k8s/postgres-service.yaml
-          kubectl apply -f k8s/postgres-statefulset.yaml
-
-          kubectl apply -f k8s/api-service.yaml
-          kubectl apply -f k8s/web-service.yaml
-
-          kubectl apply -f k8s/api-deployment.yaml
-          kubectl apply -f k8s/web-deployment.yaml
-
-          kubectl apply -f k8s/ingress.yaml
-          kubectl apply -f k8s/api-hpa.yaml
-          kubectl apply -f k8s/api-servicemonitor.yaml
-          kubectl apply -f k8s/api-prometheusrule.yaml
+          kubectl apply -k k8s/overlays/dev
 
       - name: Wait for PostgreSQL
-        run: kubectl rollout status statefulset/postgres --timeout=180s
+        run: kubectl rollout status statefulset/postgres -n "$KUBE_NAMESPACE" --timeout=180s
 
       - name: Update migration image
         run: |
           kubectl delete job taskflow-migrations --ignore-not-found
-          sed "s|ghcr.io/<GITHUB_OWNER>/taskflow-migrations:latest|ghcr.io/$OWNER_LC/taskflow-migrations:$IMAGE_TAG|g" k8s/migrations-job.yaml | kubectl apply -f -
+          sed "s|ghcr.io/<GITHUB_OWNER>/taskflow-migrations:latest|ghcr.io/$OWNER_LC/taskflow-migrations:$IMAGE_TAG|g" k8s/base/migrations-job.yaml \
+          | kubectl apply -n "$KUBE_NAMESPACE" -f -
 
       - name: Run database migrations
         run: |
-          kubectl wait --for=condition=complete job/taskflow-migrations --timeout=180s
-          kubectl logs job/taskflow-migrations
+          kubectl delete job taskflow-migrations -n "$KUBE_NAMESPACE" --ignore-not-found
+
+          sed "s|ghcr.io/<GITHUB_OWNER>/taskflow-migrations:latest|ghcr.io/$OWNER_LC/taskflow-migrations:$IMAGE_TAG|g" k8s/base/migrations-job.yaml \
+            | kubectl apply -n "$KUBE_NAMESPACE" -f -
+
+          kubectl wait -n "$KUBE_NAMESPACE" --for=condition=complete job/taskflow-migrations --timeout=180s || (
+            echo "Migration job did not complete. Debug info:"
+            kubectl get jobs -n "$KUBE_NAMESPACE"
+            kubectl describe job taskflow-migrations -n "$KUBE_NAMESPACE"
+            kubectl get pods -n "$KUBE_NAMESPACE" -l app=taskflow-migrations -o wide
+            kubectl describe pod -n "$KUBE_NAMESPACE" -l app=taskflow-migrations
+            kubectl logs -n "$KUBE_NAMESPACE" job/taskflow-migrations --all-containers || true
+            exit 1
+          )
+
+          kubectl logs -n "$KUBE_NAMESPACE" job/taskflow-migrations
 
       - name: Update deployment images
         run: |
-          kubectl set image deployment/api api=ghcr.io/$OWNER_LC/taskflow-api:$IMAGE_TAG
-          kubectl set image deployment/web web=ghcr.io/$OWNER_LC/taskflow-web:$IMAGE_TAG
+          kubectl set image deployment/api api=ghcr.io/$OWNER_LC/taskflow-api:$IMAGE_TAG -n "$KUBE_NAMESPACE"
+          kubectl set image deployment/web web=ghcr.io/$OWNER_LC/taskflow-web:$IMAGE_TAG -n "$KUBE_NAMESPACE"
 
       - name: Wait for deployments
         run: |
-          kubectl rollout status deployment api --timeout=180s
-          kubectl rollout status deployment web --timeout=180s
+          kubectl rollout status deployment api -n "$KUBE_NAMESPACE" --timeout=180s
+          kubectl rollout status deployment web -n "$KUBE_NAMESPACE" --timeout=180s
 
       - name: Smoke test
         run: |
-          curl -f http://dev.taskflow.local/api/health
-          curl -f http://dev.taskflow.local/api/tasks
+          curl -f http://$APP_HOST/api/health
+          curl -f http://$APP_HOST/api/tasks
