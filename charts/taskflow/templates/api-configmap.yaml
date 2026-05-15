@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+  labels:
+    app.kubernetes.io/name: "taskflow"
+    app.kubernetes.io/instance: "{{ .Release.Name }}"
+data:
+  PORT: "{{ .Values.api.port }}"
+  APP_NAME: "{{ .Values.api.appName }}"
+  NODE_ENV: "{{ .Values.api.nodeEnv }}"
+  APP_VERSION: "{{ .Values.api.appVersion }}"
+  DB_HOST: "postgres-service"
+  DB_PORT: "{{ .Values.postgres.port }}"

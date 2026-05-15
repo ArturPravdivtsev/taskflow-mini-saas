@@ -1,0 +1,18 @@
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: api-servicemonitor
+  labels:
+    release: "{{ .Values.serviceMonitor.releaseLabel }}"
+    app.kubernetes.io/name: "taskflow"
+    app.kubernetes.io/instance: "{{ .Release.Name }}"
+spec:
+  selector:
+    matchLabels:
+      app: "api"
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+{{- end }}

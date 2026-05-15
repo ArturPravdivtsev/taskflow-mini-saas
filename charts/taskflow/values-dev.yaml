@@ -1,0 +1,14 @@
+global:
+  imageOwner: arturpravdivtsev
+  imageTag: latest
+
+api:
+  replicas: 2
+  nodeEnv: development
+  appVersion: dev
+  hpa:
+    minReplicas: 2
+    maxReplicas: 6
+
+ingress:
+  host: dev.taskflow.local

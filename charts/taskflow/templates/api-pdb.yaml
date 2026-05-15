@@ -1,0 +1,15 @@
+{{- if .Values.api.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-pdb
+  labels:
+    app: "api"
+    app.kubernetes.io/name: "taskflow"
+    app.kubernetes.io/instance: "{{ .Release.Name }}"
+spec:
+  minAvailable: !!int "{{ .Values.api.pdb.minAvailable }}"
+  selector:
+    matchLabels:
+      app: "api"
+{{- end }}

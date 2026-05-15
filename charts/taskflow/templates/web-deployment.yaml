@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "{{ .Values.web.name }}"
+  labels:
+    app: "web"
+    app.kubernetes.io/name: "taskflow"
+    app.kubernetes.io/instance: "{{ .Release.Name }}"
+spec:
+  replicas: !!int "{{ .Values.web.replicas }}"
+  selector:
+    matchLabels:
+      app: "web"
+  template:
+    metadata:
+      labels:
+        app: "web"
+        app.kubernetes.io/name: "taskflow"
+        app.kubernetes.io/instance: "{{ .Release.Name }}"
+    spec:
+      imagePullSecrets:
+        - name: "{{ .Values.imagePullSecret.name }}"
+      containers:
+        - name: "web"
+          image: "{{ include "taskflow.webImage" . }}"
+          imagePullPolicy: "{{ .Values.web.image.pullPolicy }}"
+          ports:
+            - containerPort: !!int "{{ .Values.web.port }}"
+
+          resources:
+            requests:
+              cpu: "{{ .Values.web.resources.requests.cpu }}"
+              memory: "{{ .Values.web.resources.requests.memory }}"
+            limits:
+              cpu: "{{ .Values.web.resources.limits.cpu }}"
+              memory: "{{ .Values.web.resources.limits.memory }}"

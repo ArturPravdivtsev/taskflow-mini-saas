@@ -1,0 +1,41 @@
+{{- if .Values.postgresExporter.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-exporter
+  labels:
+    app: "postgres-exporter"
+    app.kubernetes.io/name: "taskflow"
+    app.kubernetes.io/instance: "{{ .Release.Name }}"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "postgres-exporter"
+  template:
+    metadata:
+      labels:
+        app: "postgres-exporter"
+        app.kubernetes.io/name: "taskflow"
+        app.kubernetes.io/instance: "{{ .Release.Name }}"
+    spec:
+      containers:
+        - name: postgres-exporter
+          image: "{{ .Values.postgresExporter.image }}"
+          ports:
+            - name: metrics
+              containerPort: !!int "{{ .Values.postgresExporter.port }}"
+          env:
+            - name: DATA_SOURCE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DATABASE_URL
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+{{- end }}

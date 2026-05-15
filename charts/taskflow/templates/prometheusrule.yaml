@@ -1,0 +1,119 @@
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: taskflow-api-alerts
+  labels:
+    release: "{{ .Values.serviceMonitor.releaseLabel }}"
+    app.kubernetes.io/name: "taskflow"
+    app.kubernetes.io/instance: "{{ .Release.Name }}"
+spec:
+  groups:
+    - name: taskflow-api.rules
+      rules:
+        - alert: TaskFlowAPIHigh5xxRate
+          expr: |
+            (
+              sum(rate(taskflow_http_requests_total{status=~"5.."}[5m]))
+              /
+              sum(rate(taskflow_http_requests_total[5m]))
+            ) > 0.05
+          for: 2m
+          labels:
+            severity: warning
+            app: taskflow
+          annotations:
+            summary: "TaskFlow API has high 5xx error rate"
+            description: "More than 5% of TaskFlow API requests are returning 5xx for 2 minutes."
+
+        - alert: TaskFlowAPIHighLatency
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum(rate(taskflow_http_request_duration_seconds_bucket[5m])) by (le)
+            ) > 0.5
+          for: 2m
+          labels:
+            severity: warning
+            app: taskflow
+          annotations:
+            summary: "TaskFlow API latency is high"
+            description: "TaskFlow API p95 latency is above 500ms for more than 2 minutes."
+
+        - alert: TaskFlowAPITargetDown
+          expr: up{service="api-service"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            app: taskflow
+          annotations:
+            summary: "TaskFlow API Prometheus target is down"
+            description: "Prometheus cannot scrape TaskFlow API metrics."
+
+        - alert: TaskFlowPodWaiting
+          expr: |
+            max by (namespace, pod, container, reason) (
+              kube_pod_container_status_waiting_reason{
+                reason=~"ImagePullBackOff|ErrImagePull|CrashLoopBackOff"
+              }
+            ) == 1
+          for: 2m
+          labels:
+            severity: critical
+            app: taskflow
+          annotations:
+            summary: "TaskFlow pod is stuck in waiting state"
+            description: "Pod {{ "{{" }} $labels.pod {{ "}}" }} container {{ "{{" }} $labels.container {{ "}}" }} is waiting because of {{ "{{" }} $labels.reason {{ "}}" }}."
+
+        - alert: TaskFlowAPINoAvailableReplicas
+          expr: |
+            kube_deployment_status_replicas_available{
+              deployment="api"
+            } < 1
+          for: 1m
+          labels:
+            severity: critical
+            app: taskflow
+          annotations:
+            summary: "TaskFlow API has no available replicas"
+            description: "API deployment has no available replicas."
+
+        - alert: TaskFlowHPAMaxReplicasReached
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{
+              horizontalpodautoscaler="api-hpa"
+            }
+            >=
+            kube_horizontalpodautoscaler_spec_max_replicas{
+              horizontalpodautoscaler="api-hpa"
+            }
+          for: 5m
+          labels:
+            severity: warning
+            app: taskflow
+          annotations:
+            summary: "TaskFlow HPA reached max replicas"
+            description: "HPA api-hpa has been at max replicas for more than 5 minutes."
+
+    - name: taskflow-postgres.rules
+      rules:
+        - alert: TaskFlowPostgresExporterDown
+          expr: up{service="postgres-exporter"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            app: taskflow
+          annotations:
+            summary: "TaskFlow PostgreSQL exporter is down"
+            description: "Prometheus cannot scrape postgres-exporter."
+
+        - alert: TaskFlowPostgresDown
+          expr: pg_up == 0
+          for: 1m
+          labels:
+            severity: critical
+            app: taskflow
+          annotations:
+            summary: "TaskFlow PostgreSQL is down"
+            description: "PostgreSQL appears to be down."
+{{- end }}

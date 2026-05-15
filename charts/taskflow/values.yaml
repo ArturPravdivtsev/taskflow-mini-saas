@@ -1,0 +1,76 @@
+global:
+  imageRegistry: ghcr.io
+  imageOwner: arturpravdivtsev
+  imageTag: latest
+
+api:
+  name: api
+  replicas: 2
+  image:
+    repository: taskflow-api
+    pullPolicy: IfNotPresent
+  port: 3000
+  appName: TaskFlow API
+  nodeEnv: development
+  appVersion: dev
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    averageUtilization: 50
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+web:
+  name: web
+  replicas: 1
+  image:
+    repository: taskflow-web
+    pullPolicy: IfNotPresent
+  port: 80
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+postgres:
+  enabled: true
+  name: postgres
+  image: postgres:16-alpine
+  port: 5432
+  storage: 1Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+postgresExporter:
+  enabled: true
+  image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+  port: 9187
+
+ingress:
+  enabled: true
+  className: nginx
+  host: dev.taskflow.local
+
+imagePullSecret:
+  name: ghcr-secret
+
+serviceMonitor:
+  enabled: true
+  releaseLabel: monitoring

@@ -1,0 +1,17 @@
+{{- if .Values.postgresExporter.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-exporter
+  labels:
+    app: "postgres-exporter"
+    app.kubernetes.io/name: "taskflow"
+    app.kubernetes.io/instance: "{{ .Release.Name }}"
+spec:
+  selector:
+    app: "postgres-exporter"
+  ports:
+    - name: metrics
+      port: !!int "{{ .Values.postgresExporter.port }}"
+      targetPort: !!int "{{ .Values.postgresExporter.port }}"
+{{- end }}

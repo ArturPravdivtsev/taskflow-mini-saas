@@ -1,0 +1,76 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: "{{ .Values.postgres.name }}"
+  labels:
+    app: "postgres"
+    app.kubernetes.io/name: "taskflow"
+    app.kubernetes.io/instance: "{{ .Release.Name }}"
+spec:
+  serviceName: "postgres-service"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "postgres"
+  template:
+    metadata:
+      labels:
+        app: "postgres"
+        app.kubernetes.io/name: "taskflow"
+        app.kubernetes.io/instance: "{{ .Release.Name }}"
+    spec:
+      containers:
+        - name: "postgres"
+          image: "{{ .Values.postgres.image }}"
+          ports:
+            - containerPort: !!int "{{ .Values.postgres.port }}"
+
+          envFrom:
+            - secretRef:
+                name: postgres-secret
+
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - "$(POSTGRES_USER)"
+                - -d
+                - "$(POSTGRES_DB)"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - "$(POSTGRES_USER)"
+                - -d
+                - "$(POSTGRES_DB)"
+            initialDelaySeconds: 30
+            periodSeconds: 20
+
+          resources:
+            requests:
+              cpu: "{{ .Values.postgres.resources.requests.cpu }}"
+              memory: "{{ .Values.postgres.resources.requests.memory }}"
+            limits:
+              cpu: "{{ .Values.postgres.resources.limits.cpu }}"
+              memory: "{{ .Values.postgres.resources.limits.memory }}"
+
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: "{{ .Values.postgres.storage }}"
+{{- end }}

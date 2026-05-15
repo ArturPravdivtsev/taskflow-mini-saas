@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "{{ .Values.api.name }}"
+  labels:
+    app: "api"
+    app.kubernetes.io/name: "taskflow"
+    app.kubernetes.io/instance: "{{ .Release.Name }}"
+spec:
+  replicas: !!int "{{ .Values.api.replicas }}"
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: "api"
+  template:
+    metadata:
+      labels:
+        app: "api"
+        app.kubernetes.io/name: "taskflow"
+        app.kubernetes.io/instance: "{{ .Release.Name }}"
+    spec:
+      imagePullSecrets:
+        - name: "{{ .Values.imagePullSecret.name }}"
+      containers:
+        - name: "api"
+          image: "{{ include "taskflow.apiImage" . }}"
+          imagePullPolicy: "{{ .Values.api.image.pullPolicy }}"
+          ports:
+            - containerPort: !!int "{{ .Values.api.port }}"
+
+          envFrom:
+            - configMapRef:
+                name: api-config
+            - secretRef:
+                name: api-secret
+
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_USER
+
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_DB
+
+          resources:
+            requests:
+              cpu: "{{ .Values.api.resources.requests.cpu }}"
+              memory: "{{ .Values.api.resources.requests.memory }}"
+            limits:
+              cpu: "{{ .Values.api.resources.limits.cpu }}"
+              memory: "{{ .Values.api.resources.limits.memory }}"
+
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: !!int "{{ .Values.api.port }}"
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: !!int "{{ .Values.api.port }}"
+            initialDelaySeconds: 10
+            periodSeconds: 20
