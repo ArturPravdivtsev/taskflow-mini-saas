@@ -13,3 +13,4 @@ patches:
       kind: Ingress
       name: taskflow-ingress
     path: ingress-patch.yaml
+  - path: images-patch.yaml

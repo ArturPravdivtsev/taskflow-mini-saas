@@ -33,3 +33,5 @@ patches:
       kind: HorizontalPodAutoscaler
       name: api-hpa
     path: api-hpa-patch.yaml
+
+  - path: images-patch.yaml
