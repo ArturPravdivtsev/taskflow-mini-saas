@@ -2,6 +2,11 @@ name: Production CD
 
 "on":
   workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy to production"
+        required: true
+        type: string
 
 concurrency:
   group: taskflow-prod-cd
@@ -9,29 +14,24 @@ concurrency:
 
 permissions:
   contents: read
-  packages: write
+  packages: read
 
 env:
   REGISTRY: ghcr.io
   OWNER: ${{ github.repository_owner }}
-  IMAGE_TAG: ${{ github.sha }}
+  IMAGE_TAG: ${{ inputs.image_tag }}
   KUBE_NAMESPACE: taskflow-prod
   APP_HOST: prod.taskflow.local
 
 jobs:
   deploy:
-    name: Build, push and deploy to production
+    name: Promote image to production
     runs-on: self-hosted
     environment: production
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
 
       - name: Normalize owner
         run: |
@@ -44,48 +44,11 @@ jobs:
           kubectl config current-context
           kubectl get nodes
 
-      - name: Install API dependencies
-        run: npm ci
-        working-directory: api
-
-      - name: Install Web dependencies
-        run: npm ci
-        working-directory: taskflow-web
-
-      - name: Build Web
-        run: npm run build
-        working-directory: taskflow-web
-
-      - name: Login to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-
-      - name: Build Docker images
+      - name: Check selected images exist
         run: |
-          docker build \
-            -t ghcr.io/$OWNER_LC/taskflow-api:$IMAGE_TAG \
-            -t ghcr.io/$OWNER_LC/taskflow-api:latest \
-            ./api
-
-          docker build \
-            -t ghcr.io/$OWNER_LC/taskflow-web:$IMAGE_TAG \
-            -t ghcr.io/$OWNER_LC/taskflow-web:latest \
-            ./taskflow-web
-
-          docker build \
-            -t ghcr.io/$OWNER_LC/taskflow-migrations:$IMAGE_TAG \
-            -t ghcr.io/$OWNER_LC/taskflow-migrations:latest \
-            ./db
-
-      - name: Push Docker images
-        run: |
-          docker push ghcr.io/$OWNER_LC/taskflow-api:$IMAGE_TAG
-          docker push ghcr.io/$OWNER_LC/taskflow-api:latest
-
-          docker push ghcr.io/$OWNER_LC/taskflow-web:$IMAGE_TAG
-          docker push ghcr.io/$OWNER_LC/taskflow-web:latest
-
-          docker push ghcr.io/$OWNER_LC/taskflow-migrations:$IMAGE_TAG
-          docker push ghcr.io/$OWNER_LC/taskflow-migrations:latest
+          docker pull ghcr.io/$OWNER_LC/taskflow-api:$IMAGE_TAG
+          docker pull ghcr.io/$OWNER_LC/taskflow-web:$IMAGE_TAG
+          docker pull ghcr.io/$OWNER_LC/taskflow-migrations:$IMAGE_TAG
 
       - name: Create Kubernetes secrets
         env:
