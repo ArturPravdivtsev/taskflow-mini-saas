@@ -17,3 +17,8 @@ resources:
   - postgres-exporter-deployment.yaml
   - postgres-exporter-service.yaml
   - postgres-exporter-servicemonitor.yaml
+  - networkpolicy-default-deny-ingress.yaml
+  - networkpolicy-web-ingress.yaml
+  - networkpolicy-api-ingress.yaml
+  - networkpolicy-postgres-ingress.yaml
+  - networkpolicy-postgres-exporter-ingress.yaml
