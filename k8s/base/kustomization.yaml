@@ -22,3 +22,5 @@ resources:
   - networkpolicy-api-ingress.yaml
   - networkpolicy-postgres-ingress.yaml
   - networkpolicy-postgres-exporter-ingress.yaml
+  - postgres-backup-pvc.yaml
+  - postgres-backup-cronjob.yaml

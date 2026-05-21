@@ -26,6 +26,7 @@ rules:
       - pods
       - pods/log
       - events
+      - persistentvolumeclaims
     verbs:
       - get
       - list
@@ -52,6 +53,7 @@ rules:
   - apiGroups: ["batch"]
     resources:
       - jobs
+      - cronjobs
     verbs:
       - get
       - list

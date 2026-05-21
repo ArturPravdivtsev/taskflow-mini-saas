@@ -13,9 +13,19 @@ spec:
         - podSelector:
             matchLabels:
               app: api
+
         - podSelector:
             matchLabels:
               app: postgres-exporter
+
+        - podSelector:
+            matchLabels:
+              app: postgres-backup
+
+        - podSelector:
+            matchLabels:
+              app: postgres-restore
+
       ports:
         - protocol: TCP
           port: 5432
