@@ -1,0 +1,42 @@
+global:
+  imageOwner: arturpravdivtsev
+  imageTag: latest
+
+api:
+  replicas: 1
+  nodeEnv: development
+  appVersion: helm-dev
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 300m
+      memory: 128Mi
+  hpa:
+    enabled: false
+
+web:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+postgres:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 96Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+postgresExporter:
+  enabled: false
+
+ingress:
+  host: helm.taskflow.local

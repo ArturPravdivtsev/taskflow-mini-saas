@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: taskflow-helm-dev
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/ArturPravdivtsev/taskflow-mini-saas.git
+    targetRevision: main
+    path: charts/taskflow
+    helm:
+      releaseName: taskflow-helm-dev
+      valueFiles:
+        - values.yaml
+        - values-helm-dev.yaml
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: taskflow-helm-dev
+
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
